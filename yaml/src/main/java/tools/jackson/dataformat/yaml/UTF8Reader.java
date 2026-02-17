@@ -2,6 +2,7 @@ package tools.jackson.dataformat.yaml;
 
 import java.io.*;
 import java.lang.ref.SoftReference;
+import java.util.Objects;
 
 /**
  * Optimized Reader that reads UTF-8 encoded content from an input stream.
@@ -165,9 +166,15 @@ public final class UTF8Reader
     @Override
     public int read(final char[] cbuf, final int start, int len) throws IOException
     {
+        // validate input parameters
+        Objects.requireNonNull(cbuf, "cbuf == null");
+        Objects.checkFromIndexSize(start, len, cbuf.length);
         // Already EOF?
         if (_inputBuffer == null) {
             return -1;
+        } else if (len == 0) {
+            // if len=0, we don't need to return anything
+            return 0;
         }
         len += start;
         int outPtr = start;
