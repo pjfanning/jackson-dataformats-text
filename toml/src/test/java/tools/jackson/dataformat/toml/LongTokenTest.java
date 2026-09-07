@@ -87,8 +87,8 @@ public class LongTokenTest extends TomlMapperTestBase {
     @Test
     public void integerUnderscoreBufferGrowth() throws IOException {
         // Digits interleaved with underscores, long enough to force the lexer's
-        // token buffer (initial size 4000) to grow while removing the underscores,
-        // followed by another key/value pair to prove later tokens are unaffected.
+        // token buffer (initial size 4000) to grow while lexing, followed by
+        // another key/value pair to prove later tokens are unaffected.
         StringBuilder digits = new StringBuilder();
         for (int i = 0; i < SCALE; i++) {
             digits.append((char) ('0' + (i % 10)));

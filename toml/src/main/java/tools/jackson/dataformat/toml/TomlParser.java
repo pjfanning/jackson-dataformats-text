@@ -329,7 +329,9 @@ class TomlParser {
             if (buffer[start + i] == '_') {
                 // slow path to remove underscores: compact into the already-owned
                 // buffer itself (chars before the first '_' are already in place),
-                // avoiding a second array allocation
+                // avoiding a second array allocation.
+                // NOTE: leaves stale chars after the compacted region, so this is
+                // only safe as long as nothing re-reads `lexer.yytext()` for this token
                 int pos = start + i;
                 for (int j = pos + 1; j < start + length; j++) {
                     char c = buffer[j];
