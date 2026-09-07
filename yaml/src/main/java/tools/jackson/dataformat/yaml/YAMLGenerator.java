@@ -792,7 +792,9 @@ public class YAMLGenerator extends GeneratorBase
         throws JacksonException
     {
         _verifyValueWrite("write Object reference");
-        AliasEvent evt = new AliasEvent(id == null ? Optional.empty() : Optional.of(new Anchor(id.toString())));
+        // NOTE: `String.valueOf()` to retain legacy handling of `null` id as "null"
+        // (`AliasEvent` itself does not allow missing Anchor)
+        AliasEvent evt = new AliasEvent(Optional.of(new Anchor(String.valueOf(id))));
         _emit(evt);
         return this;
     }
