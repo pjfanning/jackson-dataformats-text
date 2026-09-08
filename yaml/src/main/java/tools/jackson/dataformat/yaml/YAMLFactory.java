@@ -269,12 +269,13 @@ public class YAMLFactory
     @Override
     protected YAMLParser _createParser(ObjectReadContext readCtxt, IOContext ioCtxt,
             InputStream in) {
+        final int stdFeatures = readCtxt.getStreamReadFeatures(_streamReadFeatures);
         return new YAMLParser(readCtxt, ioCtxt,
                 _getBufferRecycler(),
-                readCtxt.getStreamReadFeatures(_streamReadFeatures),
+                stdFeatures,
                 readCtxt.getFormatReadFeatures(_formatReadFeatures),
                 _loadSettings,
-                _createReader(in, null, ioCtxt));
+                _createReader(in, null, ioCtxt, stdFeatures));
     }
 
     @Override
@@ -358,14 +359,27 @@ public class YAMLFactory
     /**********************************************************************
      */
 
-    protected Reader _createReader(InputStream in, JsonEncoding enc, IOContext ctxt)
+    /**
+     * @param streamReadFeatures Effective {@link StreamReadFeature}s of the parser being
+     *    constructed: note that these may differ from this factory's defaults, since
+     *    {@code ObjectReader} may override them on a per-call basis.
+     *
+     * @since 3.3
+     */
+    protected Reader _createReader(InputStream in, JsonEncoding enc, IOContext ctxt,
+            int streamReadFeatures)
     {
         if (enc == null) {
             enc = JsonEncoding.UTF8;
         }
         // default to UTF-8 if encoding missing
         if (enc == JsonEncoding.UTF8) {
-            boolean autoClose = ctxt.isResourceManaged() || isEnabled(StreamReadFeature.AUTO_CLOSE_SOURCE);
+            // 08-Sep-2026, pjfanning: [dataformats-text#718] must use the parser's
+            //   effective features here; `YAMLParser._closeInput()` decides whether to
+            //   close this Reader based on those, and if the two disagree the caller's
+            //   `InputStream` is silently left open
+            boolean autoClose = ctxt.isResourceManaged()
+                    || StreamReadFeature.AUTO_CLOSE_SOURCE.enabledIn(streamReadFeatures);
             return new UTF8Reader(in, autoClose);
 //          return new InputStreamReader(in, UTF8);
         }

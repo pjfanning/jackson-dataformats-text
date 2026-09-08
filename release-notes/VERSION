@@ -19,6 +19,9 @@ implementations)
 #699: (csv) Ability to modify columns in `CsvSchema.Builder` by name
  (requested by @OrangeDog)
  (fix by @seonwooj0810)
+#718: (properties,toml,yaml) `StreamReadFeature.AUTO_CLOSE_SOURCE` configured on
+  `ObjectReader` ignored; (csv,properties,toml) `Reader`s constructed to wrap
+  caller-provided `InputStream`s not always closed, leaking recycled buffers
 
 3.2.2 (14-Aug-2026)
 
