@@ -70,6 +70,17 @@ public class CsvEncoder
      * Underlying {@link Writer} used for output.
      */
     protected final Writer _out;
+
+    /**
+     * Flag that indicates whether {@link #_out} was constructed by Jackson (wrapping a
+     * caller-provided {@link java.io.OutputStream}) rather than handed to us by the
+     * caller. A {@link Writer} we construct must always be closed: that is what flushes
+     * its pending content into the stream and returns its buffers to the recycler. Such
+     * a {@link Writer} knows not to close the stream underneath unless it should.
+     *
+     * @since 3.3
+     */
+    protected final boolean _ownsWriter;
     
     protected final char _cfgColumnSeparator;
 
@@ -202,7 +213,22 @@ public class CsvEncoder
             CharacterEscapes esc, boolean useFastDoubleWriter,
             int maxQuoteCheckChars)
     {
+        this(ctxt, csvFeatures, out, schema, esc, useFastDoubleWriter,
+                maxQuoteCheckChars, false);
+    }
+
+    /**
+     * @param ownsWriter Whether {@code out} was constructed by Jackson (and hence must
+     *    always be closed), or provided by the caller
+     *
+     * @since 3.3
+     */
+    public CsvEncoder(IOContext ctxt, int csvFeatures, Writer out, CsvSchema schema,
+            CharacterEscapes esc, boolean useFastDoubleWriter,
+            int maxQuoteCheckChars, boolean ownsWriter)
+    {
         _ioContext = ctxt;
+        _ownsWriter = ownsWriter;
         _csvFeatures = csvFeatures;
         _cfgUseFastDoubleWriter = useFastDoubleWriter;
         _cfgOptimalQuoting = CsvWriteFeature.STRICT_CHECK_FOR_QUOTING.enabledIn(csvFeatures);
@@ -256,6 +282,7 @@ public class CsvEncoder
     public CsvEncoder(CsvEncoder base, CsvSchema newSchema)
     {
         _ioContext = base._ioContext;
+        _ownsWriter = base._ownsWriter;
         _csvFeatures = base._csvFeatures;
         _cfgUseFastDoubleWriter = base._cfgUseFastDoubleWriter;
         _cfgOptimalQuoting = base._cfgOptimalQuoting;
@@ -1110,9 +1137,18 @@ public class CsvEncoder
         } finally {
             if (autoClose) {
                 _out.close();
-            } else if (flushStream) {
-                // If we can't close it, we should at least flush
-                _out.flush();
+            } else {
+                if (flushStream) {
+                    // If we can't close it, we should at least flush
+                    _out.flush();
+                }
+                // 08-Sep-2026, pjfanning: [dataformats-text#719] a Writer we constructed
+                //   ourselves must be closed regardless: without that its buffered
+                //   content never reaches the caller's OutputStream, and the buffer it
+                //   took from the recycler is lost. It knows not to close the stream.
+                if (_ownsWriter) {
+                    _out.close();
+                }
             }
             // Internal buffer(s) generator has can now be released as well
             _releaseBuffers();

@@ -303,11 +303,17 @@ public class CsvFactory
     protected CsvGenerator _createUTF8Generator(ObjectWriteContext writeCtxt,
             IOContext ioCtxt, OutputStream out)
     {
+        final int stdFeatures = writeCtxt.getStreamWriteFeatures(_streamWriteFeatures);
+        // Writer is constructed (and hence owned) by us, so the generator must always
+        // close it -- that flushes its pending content and recycles its buffer;
+        // `autoClose` only decides whether the caller's `OutputStream` goes with it
+        final boolean autoClose = ioCtxt.isResourceManaged()
+                || StreamWriteFeature.AUTO_CLOSE_TARGET.enabledIn(stdFeatures);
         return new CsvGenerator(writeCtxt, ioCtxt,
-                writeCtxt.getStreamWriteFeatures(_streamWriteFeatures),
+                stdFeatures,
                 writeCtxt.getFormatWriteFeatures(_formatWriteFeatures),
-                new UTF8Writer(ioCtxt, out), _getSchema(writeCtxt),
-                _characterEscapes, _maxQuoteCheckChars);
+                new UTF8Writer(ioCtxt, out, autoClose), _getSchema(writeCtxt),
+                _characterEscapes, _maxQuoteCheckChars, true);
     }
 
     private final CsvSchema _getSchema(ObjectWriteContext writeCtxt) {

@@ -22,6 +22,14 @@ public final class UTF8Writer
 
     private OutputStream _out;
 
+    /**
+     * Whether {@link #close()} should also close {@link #_out}, or only flush pending
+     * content into it and release buffers this writer holds.
+     *
+     * @since 3.3
+     */
+    final private boolean _autoClose;
+
     private byte[] _outBuffer;
 
     final private int _outBufferEnd;
@@ -35,10 +43,22 @@ public final class UTF8Writer
      */
     private int _surrogate = 0;
 
-    public UTF8Writer(IOContext ctxt, OutputStream out)
+    public UTF8Writer(IOContext ctxt, OutputStream out) {
+        this(ctxt, out, true);
+    }
+
+    /**
+     * @param autoClose Whether {@link #close()} should also close the underlying
+     *    {@link OutputStream}: if not, closing still writes out pending content and
+     *    releases buffers, but leaves the stream itself open.
+     *
+     * @since 3.3
+     */
+    public UTF8Writer(IOContext ctxt, OutputStream out, boolean autoClose)
     {
         _context = ctxt;
         _out = out;
+        _autoClose = autoClose;
 
         _outBuffer = ctxt.allocWriteEncodingBuffer();
         // Max. expansion for a single char (in unmodified UTF-8) is 4 bytes (or 3 depending
@@ -71,7 +91,9 @@ public final class UTF8Writer
                 _context.releaseWriteEncodingBuffer(buf);
             }
 
-            out.close();
+            if (_autoClose) {
+                out.close();
+            }
 
             /* Let's 'flush' orphan surrogate, no matter what; but only
              * after cleanly closing everything else.
