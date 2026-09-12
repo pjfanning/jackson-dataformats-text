@@ -384,23 +384,7 @@ public class CsvEncoder
     {
         // easy case: all in order
         if (columnIndex == _nextColumnToWrite) {
-            // inlined 'appendValue(String)`
-            if (_outputTail >= _outputEnd) {
-                _flushBuffer();
-            }
-            if (_nextColumnToWrite > 0) {
-                appendColumnSeparator();
-            }
-            final int len = value.length();
-            if (_cfgAlwaysQuoteStrings || _mayNeedQuotes(value, len, columnIndex)) {
-                if (_cfgEscapeCharacter > 0) {
-                    _writeQuotedAndEscaped(value, (char) _cfgEscapeCharacter);
-                } else {
-                    _writeQuoted(value);
-                }
-            } else {
-                writeRaw(value);
-            }
+            appendValue(value);
             ++_nextColumnToWrite;
             return;
         }
@@ -409,8 +393,13 @@ public class CsvEncoder
 
     public final void write(int columnIndex, char[] ch, int offset, int len) throws JacksonException
     {
-        // !!! TODO: optimize
-        write(columnIndex, new String(ch, offset, len));
+        // easy case: all in order
+        if (columnIndex == _nextColumnToWrite) {
+            appendValue(ch, offset, len);
+            ++_nextColumnToWrite;
+            return;
+        }
+        _buffer(columnIndex, BufferedValue.buffered(new String(ch, offset, len)));
     }
 
     public final void write(int columnIndex, int value) throws JacksonException
@@ -598,17 +587,95 @@ public class CsvEncoder
         if (_nextColumnToWrite > 0) {
             appendColumnSeparator();
         }
-        // First: determine if we need quotes; simple heuristics;
-        // only check for short Strings, stop if something found
         final int len = value.length();
-        if (_cfgAlwaysQuoteStrings || _mayNeedQuotes(value, len, _nextColumnToWrite)) {
-            if (_cfgEscapeCharacter > 0) {
-                _writeQuotedAndEscaped(value, (char) _cfgEscapeCharacter);
-            } else {
-                _writeQuoted(value);
-            }
-        } else {
+        // First: cases where no scanning of content is needed
+        if (_cfgAlwaysQuoteStrings) {
+            _writeQuotedValue(value);
+            return;
+        }
+        if (_cfgQuoteCharacter < 0) { // quoting disabled
             writeRaw(value);
+            return;
+        }
+        if (_needsQuotesWithoutScan(value, len, _nextColumnToWrite)) {
+            _writeQuotedValue(value);
+            return;
+        }
+        // Common case is that of no quoting needed: so make a speculative copy
+        // into output buffer and scan that (single pass over content, instead of
+        // scanning String and then copying). If quoting turns out to be needed,
+        // quoted write simply overwrites the speculative copy.
+        if ((_outputTail + len) > _outputEnd) {
+            if (len > _outputEnd) { // too long to fit even in empty buffer
+                if (_needsQuoting(value)) {
+                    _writeQuotedValue(value);
+                } else {
+                    writeRaw(value);
+                }
+                return;
+            }
+            _flushBuffer();
+        }
+        value.getChars(0, len, _outputBuffer, _outputTail);
+        if (_needsQuoting(_outputBuffer, _outputTail, len)) {
+            _writeQuotedValue(value);
+        } else {
+            _outputTail += len;
+        }
+    }
+
+    /**
+     * Variant of {@link #appendValue(String)} for {@code char[]} input:
+     * common case of no quoting needed is handled without constructing
+     * a {@code String}.
+     *
+     * @since 3.3
+     */
+    protected void appendValue(char[] ch, int offset, int len) throws JacksonException
+    {
+        if (_outputTail >= _outputEnd) {
+            _flushBuffer();
+        }
+        if (_nextColumnToWrite > 0) {
+            appendColumnSeparator();
+        }
+        if (_cfgAlwaysQuoteStrings) {
+            _writeQuotedValue(new String(ch, offset, len));
+            return;
+        }
+        if (_cfgQuoteCharacter < 0) { // quoting disabled
+            writeRaw(ch, offset, len);
+            return;
+        }
+        if (_needsQuotesWithoutScan(ch, offset, len, _nextColumnToWrite)) {
+            _writeQuotedValue(new String(ch, offset, len));
+            return;
+        }
+        if ((_outputTail + len) > _outputEnd) {
+            if (len > _outputEnd) { // too long to fit even in empty buffer
+                if (_needsQuoting(ch, offset, len)) {
+                    _writeQuotedValue(new String(ch, offset, len));
+                } else {
+                    writeRaw(ch, offset, len);
+                }
+                return;
+            }
+            _flushBuffer();
+        }
+        System.arraycopy(ch, offset, _outputBuffer, _outputTail, len);
+        if (_needsQuoting(_outputBuffer, _outputTail, len)) {
+            _writeQuotedValue(new String(ch, offset, len));
+        } else {
+            _outputTail += len;
+        }
+    }
+
+    private void _writeQuotedValue(String value) throws JacksonException
+    {
+        if (_cfgEscapeCharacter > 0) {
+            _writeQuotedAndEscaped(value, (char) _cfgEscapeCharacter);
+        } else {
+            _writeQuoted(value);
         }
     }
 
@@ -1144,10 +1211,46 @@ public class CsvEncoder
         if (_cfgQuoteCharacter < 0) {
             return false;
         }
+        if (_needsQuotesWithoutScan(value, length, columnIndex)) {
+            return true;
+        }
+        return _needsQuoting(value);
+    }
+
+    /**
+     * Checks that can determine need for quoting without scanning content
+     * (leading/trailing whitespace, comment marker, length, empty String).
+     * Returns {@code false} if content scan ({@link #_needsQuoting}) is
+     * still needed to decide.
+     *
+     * @since 3.3
+     */
+    protected boolean _needsQuotesWithoutScan(String value, int length, int columnIndex)
+    {
+        if (length == 0) {
+            return _needsQuotesWithoutScan((char) 0, (char) 0, length, columnIndex);
+        }
+        return _needsQuotesWithoutScan(value.charAt(0), value.charAt(length - 1),
+                length, columnIndex);
+    }
+
+    /**
+     * @since 3.3
+     */
+    protected boolean _needsQuotesWithoutScan(char[] ch, int offset, int length, int columnIndex)
+    {
+        if (length == 0) {
+            return _needsQuotesWithoutScan((char) 0, (char) 0, length, columnIndex);
+        }
+        return _needsQuotesWithoutScan(ch[offset], ch[offset + length - 1],
+                length, columnIndex);
+    }
+
+    // NOTE: `first` and `last` only meaningful if `length > 0`
+    private boolean _needsQuotesWithoutScan(char first, char last, int length, int columnIndex)
+    {
         // [dataformats-text#210]: check for leading/trailing whitespace
         if (_cfgQuoteLeadingTrailingWhitespace && length > 0) {
-            char first = value.charAt(0);
-            char last = value.charAt(length - 1);
             if (first <= ' ' || last <= ' ') {
                 return true;
             }
@@ -1156,25 +1259,57 @@ public class CsvEncoder
         if (_cfgOptimalQuoting) {
             // 31-Dec-2014, tatu: Comment lines start with # so quote if starts with #
             // 28-May-2021, tatu: As per [dataformats-text#270] only check if first column
-            if (_cfgAllowsComments && (columnIndex == 0)
-                && (length > 0) && (value.charAt(0) == '#')) {
-                return true;
-            }
-            if (_cfgEscapeCharacter > 0) {
-                return _needsQuotingStrict(value, _cfgEscapeCharacter);
-            }
-            return _needsQuotingStrict(value);
+            return _cfgAllowsComments && (columnIndex == 0)
+                && (length > 0) && (first == '#');
         }
         if (length > _cfgMaxQuoteCheckChars) {
             return true;
         }
         if (_cfgEscapeCharacter > 0) {
+            return false;
+        }
+        return _cfgAlwaysQuoteEmptyStrings && length == 0;
+    }
+
+    /**
+     * Content scan to determine whether quoting is needed; strict or loose
+     * depending on configuration.
+     *
+     * @since 3.3
+     */
+    protected boolean _needsQuoting(String value)
+    {
+        if (_cfgOptimalQuoting) {
+            if (_cfgEscapeCharacter > 0) {
+                return _needsQuotingStrict(value, _cfgEscapeCharacter);
+            }
+            return _needsQuotingStrict(value);
+        }
+        if (_cfgEscapeCharacter > 0) {
             return _needsQuotingLoose(value, _cfgEscapeCharacter);
         }
-        if (_cfgAlwaysQuoteEmptyStrings && length == 0) {
-            return true;
-        }
         return _needsQuotingLoose(value);
+    }
+
+    /**
+     * Content scan over a {@code char[]} region; same logic as
+     * {@link #_needsQuoting(String)}.
+     *
+     * @since 3.3
+     */
+    protected boolean _needsQuoting(char[] ch, int offset, int len)
+    {
+        final int end = offset + len;
+        if (_cfgOptimalQuoting) {
+            if (_cfgEscapeCharacter > 0) {
+                return _needsQuotingStrict(ch, offset, end, _cfgEscapeCharacter);
+            }
+            return _needsQuotingStrict(ch, offset, end);
+        }
+        if (_cfgEscapeCharacter > 0) {
+            return _needsQuotingLoose(ch, offset, end, _cfgEscapeCharacter);
+        }
+        return _needsQuotingLoose(ch, offset, end);
     }
 
     /**
@@ -1257,6 +1392,77 @@ public class CsvEncoder
                         || (c < escLen && escCodes[c] != 0)
                         || (c == lfFirst)
                         // Per RFC 4180: must quote if contains LF or CR
+                        || (c == '\n') || (c == '\r')) {
+                    return true;
+                }
+            } else if (c == esc) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean _needsQuotingLoose(char[] ch, int i, int end)
+    {
+        final char esc1 = _cfgQuoteCharEscapeChar;
+        final char esc2 = _cfgControlCharEscapeChar;
+        final int minSafe = _cfgMinSafeChar;
+
+        for (; i < end; ++i) {
+            char c = ch[i];
+            if ((c < minSafe) || (c == esc1) || (c == esc2)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean _needsQuotingLoose(char[] ch, int i, int end, int esc)
+    {
+        final int minSafe = _cfgMinSafeChar;
+        for (; i < end; ++i) {
+            int c = ch[i];
+            if ((c < minSafe) || (c == esc)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean _needsQuotingStrict(char[] ch, int i, int end)
+    {
+        final int minSafe = _cfgMinSafeChar;
+        final int[] escCodes = _outputEscapes;
+        final int escLen = escCodes.length;
+        final int lfFirst = (_cfgLineSeparatorLength == 0) ? 0 : _cfgLineSeparator[0];
+
+        for (; i < end; ++i) {
+            int c = ch[i];
+            if (c < minSafe) {
+                if (c == _cfgColumnSeparator || c == _cfgQuoteCharacter
+                        || (c < escLen && escCodes[c] != 0)
+                        || (c == lfFirst)
+                        || (c == '\n') || (c == '\r')) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean _needsQuotingStrict(char[] ch, int i, int end, int esc)
+    {
+        final int minSafe = _cfgMinSafeChar;
+        final int[] escCodes = _outputEscapes;
+        final int escLen = escCodes.length;
+        final int lfFirst = (_cfgLineSeparatorLength == 0) ? 0 : _cfgLineSeparator[0];
+
+        for (; i < end; ++i) {
+            int c = ch[i];
+            if (c < minSafe) {
+                if (c == _cfgColumnSeparator || c == _cfgQuoteCharacter
+                        || (c < escLen && escCodes[c] != 0)
+                        || (c == lfFirst)
                         || (c == '\n') || (c == '\r')) {
                     return true;
                 }
