@@ -15,6 +15,8 @@ import tools.jackson.core.util.BufferRecycler;
 import tools.jackson.core.util.JacksonFeatureSet;
 import tools.jackson.core.util.SimpleStreamReadContext;
 
+import tools.jackson.dataformat.yaml.util.ReadConstrainedReader;
+
 import org.snakeyaml.engine.v2.api.LoadSettings;
 import org.snakeyaml.engine.v2.common.Anchor;
 import org.snakeyaml.engine.v2.events.AliasEvent;
@@ -149,6 +151,11 @@ public class YAMLParser extends ParserBase
         }
         _formatFeatures = formatFeatures;
         _reader = reader;
+        // [dataformats-text#636]: SnakeYAML reads input directly, so to enforce
+        // max document length we need to count what it reads
+        if (_streamReadConstraints.hasMaxDocumentLength()) {
+            reader = new ReadConstrainedReader(reader, _streamReadConstraints);
+        }
         _yamlParser = new ParserImpl(loadSettings, new StreamReader(loadSettings, reader));
         _yamlResolver = loadSettings.getSchema().getScalarResolver();
 

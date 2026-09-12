@@ -16,6 +16,7 @@ implementations)
 
 3.3.0 (not yet released)
 
+#636: (yaml) Support `StreamReadConstraints.maxDocumentLength()` for YAML parser
 #699: (csv) Ability to modify columns in `CsvSchema.Builder` by name
  (requested by @OrangeDog)
  (fix by @seonwooj0810)
