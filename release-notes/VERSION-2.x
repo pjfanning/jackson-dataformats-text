@@ -14,6 +14,11 @@ Active Maintainers:
 === Releases ===
 ------------------------------------------------------------------------
 
+2.18.11 (not yet released)
+
+#723: (toml) `TomlGenerator.writeNumber(short)` writes an extra empty line
+  after the value (calls `writeValueEnd()` twice)
+
 2.18.10 (15-Aug-2026)
 
 #702: (toml) Expand nesting depth checks for dotted keys [CVE-2026-85278]
