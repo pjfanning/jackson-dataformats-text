@@ -19,6 +19,9 @@ implementations)
 #699: (csv) Ability to modify columns in `CsvSchema.Builder` by name
  (requested by @OrangeDog)
  (fix by @seonwooj0810)
+#721: (csv) Write `double`/`float` values directly into output buffer (via
+  `NumberOutput.outputDouble()/outputFloat()`) when `USE_FAST_DOUBLE_WRITER`
+  enabled, avoiding intermediate `String`
 
 3.2.2 (14-Aug-2026)
 
