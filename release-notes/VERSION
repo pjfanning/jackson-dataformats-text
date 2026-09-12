@@ -19,6 +19,8 @@ implementations)
 #699: (csv) Ability to modify columns in `CsvSchema.Builder` by name
  (requested by @OrangeDog)
  (fix by @seonwooj0810)
+#725: (toml) Use lookup table for ASCII character categorization when writing
+  Strings/keys; avoid `substring()`/`toString()` in `writeRaw()` variants
 
 3.2.2 (14-Aug-2026)
 
