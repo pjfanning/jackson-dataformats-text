@@ -14,6 +14,11 @@ Active Maintainers:
 === Releases ===
 ------------------------------------------------------------------------
 
+2.18.11 (not yet released)
+
+#726: (toml) `TomlGenerator.writeString(char[], int, int)` writes wrong characters
+  or throws `ArrayIndexOutOfBoundsException` when value needs escaping
+
 2.18.10 (15-Aug-2026)
 
 #702: (toml) Expand nesting depth checks for dotted keys [CVE-2026-85278]
