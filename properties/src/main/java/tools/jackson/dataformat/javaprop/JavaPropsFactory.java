@@ -10,6 +10,7 @@ import tools.jackson.core.io.IOContext;
 import tools.jackson.dataformat.javaprop.impl.PropertiesBackedGenerator;
 import tools.jackson.dataformat.javaprop.impl.WriterBackedGenerator;
 import tools.jackson.dataformat.javaprop.io.Latin1Reader;
+import tools.jackson.dataformat.javaprop.io.ReadConstrainedReader;
 
 @SuppressWarnings("resource")
 public class JavaPropsFactory
@@ -301,6 +302,12 @@ public class JavaPropsFactory
 
     protected Properties _loadProperties(Reader r0, IOContext ctxt)
     {
+        // [dataformats-text#638]: `Properties.load()` reads input directly, so
+        // to enforce max document length we need to count what it reads
+        final StreamReadConstraints src = ctxt.streamReadConstraints();
+        if (src.hasMaxDocumentLength()) {
+            r0 = new ReadConstrainedReader(r0, src);
+        }
         Properties props = new Properties();
         // May or may not want to close the reader, so...
         try {
