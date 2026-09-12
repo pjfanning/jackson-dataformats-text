@@ -153,6 +153,8 @@ class TomlParser {
             } else {
                 throw errorContext.atPosition(lexer).unexpectedToken(partToken, "quoted or unquoted key");
             }
+            // [dataformats-text#430]: each key part becomes a property name
+            tomlFactory.streamReadConstraints().validateNameLength(part.length());
             pollExpected(partToken, Lexer.EXPECT_INLINE_KEY);
             if (peek() != TomlToken.DOT_SEP) {
                 return new FieldRef(node, part, nodeDepth);
